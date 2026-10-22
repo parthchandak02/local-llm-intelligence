@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Local LLM Cost vs Intelligence — Small Footprint Guide</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --panel: #121820;
+      --border: #1e2a38;
+      --text: #e8eef4;
+      --muted: #8fa3b8;
+      --accent: #3dd6c6;
+      --accent2: #6ea8ff;
+      --warn: #f5a623;
+      --good: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    header {
+      padding: 2rem 1.5rem 1rem;
+      max-width: 1200px;
+      margin: 0 auto;
+      border-bottom: 1px solid var(--border);
+    }
+    h1 { font-size: 1.6rem; margin: 0 0 .4rem; font-weight: 650; }
+    .sub { color: var(--muted); font-size: .95rem; max-width: 70ch; }
+    main { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
+    .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem 1.1rem;
+    }
+    .card h2 { font-size: .85rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 .75rem; }
+    .stat { font-size: 1.8rem; font-weight: 700; }
+    .stat small { font-size: .85rem; color: var(--muted); font-weight: 500; }
+    .controls {
+      display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0 1.25rem; align-items: center;
+    }
+    .controls label { color: var(--muted); font-size: .85rem; margin-right: .25rem; }
+    button, select {
+      background: #1a2430;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: .45rem .75rem;
+      font-size: .85rem;
+      cursor: pointer;
+    }
+    button.active { border-color: var(--accent); color: var(--accent); }
+    .chart-wrap { position: relative; height: 420px; margin-top: .5rem; }
+    table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    th, td { text-align: left; padding: .55rem .4rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--panel); }
+    tr:hover td { background: #161f2a; }
+    a { color: var(--accent2); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .pill {
+      display: inline-block; padding: .15rem .45rem; border-radius: 999px;
+      font-size: .72rem; background: #1a2a22; color: var(--good); border: 1px solid #2a4a36;
+    }
+    .pill.warn { background: #2a2218; color: var(--warn); border-color: #4a3a22; }
+    .sources { font-size: .78rem; color: var(--muted); margin-top: 1.5rem; }
+    .sources ul { margin: .4rem 0; padding-left: 1.2rem; }
+    .pick { border-left: 3px solid var(--accent); padding-left: .75rem; margin: .5rem 0; }
+    footer { text-align: center; color: var(--muted); font-size: .75rem; padding: 2rem 1rem; }
+    @media (max-width: 700px) { .chart-wrap { height: 320px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Local LLM: Cost vs Intelligence</h1>
+    <p class="sub">
+      Best open models for small-footprint home Macs. Intelligence scores from
+      <a href="https://artificialanalysis.ai/models/open-source/small">Artificial Analysis</a>,
+      <a href="https://huggingface.co/spaces/open-llm-leaderboard/open_llm_leaderboard">Open LLM Leaderboard</a>,
+      and official model cards. RAM from <a href="https://ollama.com/library">Ollama</a> Q4 sizes.
+      Updated Jul 2026.
+    </p>
+  </header>
+
+  <main>
+    <div class="grid" id="summary-cards"></div>
+
+    <div class="controls">
+      <label>Filter by Mac RAM:</label>
+      <button class="ram-btn active" data-ram="all">All</button>
+      <button class="ram-btn" data-ram="8">8 GB</button>
+      <button class="ram-btn" data-ram="16">16 GB</button>
+      <button class="ram-btn" data-ram="24">24 GB</button>
+      <button class="ram-btn" data-ram="48">48 GB</button>
+      <label style="margin-left:1rem">Metric:</label>
+      <select id="metric-select">
+        <option value="mmlu_pro">MMLU-Pro (reasoning)</option>
+        <option value="coding">Coding score</option>
+        <option value="composite">Composite IQ index</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <h2>Intelligence vs RAM footprint (bubble = tok/s on M4 Pro)</h2>
+      <div class="chart-wrap"><canvas id="scatter"></canvas></div>
+    </div>
+
+    <div class="card" style="margin-top:1rem">
+      <h2>Hardware cost vs max intelligence tier</h2>
+      <div class="chart-wrap" style="height:340px"><canvas id="hardware"></canvas></div>
+    </div>
+
+    <div class="card" style="margin-top:1rem">
+      <h2>Top picks by RAM tier</h2>
+      <div id="picks"></div>
+    </div>
+
+    <div class="card" style="margin-top:1rem; overflow-x:auto">
+      <h2>Full model comparison</h2>
+      <table id="model-table">
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>Q4 RAM</th>
+            <th>Min Mac</th>
+            <th>MMLU-Pro</th>
+            <th>Coding</th>
+            <th>tok/s</th>
+            <th>$ to run*</th>
+            <th>Source</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <p style="font-size:.75rem;color:var(--muted);margin:.5rem 0 0">* Cheapest new/used Mac that fits this model at Q4. Your M2 8GB/256GB highlighted.</p>
+    </div>
+
+    <div class="sources card" style="margin-top:1rem">
+      <h2>Official &amp; community sources</h2>
+      <ul>
+        <li><a href="https://huggingface.co/docs/leaderboards/main/open_llm_leaderboard/about">Open LLM Leaderboard</a> — MMLU-Pro, GPQA, BBH, MATH (Eleuther harness)</li>
+        <li><a href="https://artificialanalysis.ai/models/open-source/small">Artificial Analysis</a> — Intelligence Index v4.1 for open models</li>
+        <li><a href="https://arena.ai/leaderboard">LMSYS Chatbot Arena</a> — human Elo (mostly API models)</li>
+        <li><a href="https://ollama.com/library">Ollama library</a> — Q4 file sizes = practical RAM floor</li>
+        <li><a href="https://siliconscore.com/chips/m4-pro/">SiliconScore M4 Pro</a> — Apple Silicon tok/s</li>
+        <li><a href="https://prices.appleinsider.com/mac-mini-m4">AppleInsider price guide</a> — Jul 2026 Mac deals</li>
+        <li><a href="https://localaimaster.com/blog/apple-silicon-ai-buying-guide">Local AI Master</a> — RAM tier buying guide</li>
+      </ul>
+    </div>
+  </main>
+  <footer>Built for Parth · data Jul 2026 · not financial advice</footer>
+
+  <script>
+    const HARDWARE = [
+      { ram: 8,  mac: "M2 Mac mini (used)",     price: 400,  bw: 100, best: "Llama 3.1 8B",     iq: 48.3, deal: "https://swappa.com/prices/mac-mini-2023" },
+      { ram: 16, mac: "M4 Mac mini 16GB",       price: 579,  bw: 120, best: "Phi-4 14B",        iq: 70.4, deal: "https://www.amazon.com/dp/B0DLHCB8WW" },
+      { ram: 24, mac: "M4 Pro mini 24GB",       price: 1570, bw: 273, best: "Mistral Small 24B", iq: 66.8, deal: "https://prices.appleinsider.com/mac-mini-m4" },
+      { ram: 32, mac: "M4 Mac mini 32GB",       price: 1199, bw: 120, best: "14B (bandwidth limited)", iq: 63, deal: "https://www.apple.com/shop/buy-mac/mac-mini" },
+      { ram: 48, mac: "M4 Pro mini 48GB",       price: 1799, bw: 273, best: "Qwen3-Coder 30B",  iq: 70.6, deal: "https://www.bhphotovideo.com/c/product/1859285-REG/apple_z1jv_macmini14_mac_mini_m4_pro_12c.html" },
+      { ram: 64, mac: "M4 Pro mini 64GB",       price: 1999, bw: 273, best: "Llama 3.1 70B",    iq: 66.4, deal: "https://prices.appleinsider.com/mac-mini-m4" },
+      { ram: 128,mac: "Mac Studio M4 Max 128GB",price: 3499, bw: 546, best: "DeepSeek V4 Flash", iq: 86,  deal: "https://www.apple.com/shop/buy-mac/mac-studio" },
+    ];
+
+    const MODELS = [
+      { id:"llama-3.1-8b", name:"Llama 3.1 8B", params:"8B", q4:6.4, minRam:8, mmlu_pro:48.3, coding:72.6, composite:48, tok_s:82, hwPrice:400, bestFor:"Fastest on 8GB", sources:["https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/MODEL_CARD.md","https://ollama.com/library/llama3.1"] },
+      { id:"phi-4-14b", name:"Phi-4 14B", params:"14B", q4:10.6, minRam:16, mmlu_pro:70.4, coding:82.6, composite:72, tok_s:22, hwPrice:579, bestFor:"Best IQ per GB", sources:["https://huggingface.co/microsoft/phi-4","https://ollama.com/library/phi4"] },
+      { id:"mistral-small-24b", name:"Mistral Small 3.1 24B", params:"24B", q4:15.5, minRam:16, mmlu_pro:66.8, coding:88.4, composite:68, tok_s:36, hwPrice:579, bestFor:"Best 16GB all-rounder", sources:["https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Instruct-2503","https://ollama.com/library/mistral-small"] },
+      { id:"gemma-3-27b", name:"Gemma 3 27B IT", params:"27B", q4:18.5, minRam:24, mmlu_pro:67.5, coding:87.8, composite:70, tok_s:25, hwPrice:1570, bestFor:"Multimodal general", sources:["https://huggingface.co/google/gemma-3-27b-it","https://ollama.com/library/gemma3"] },
+      { id:"qwen3-coder-30b", name:"Qwen3-Coder 30B (MoE)", params:"30B/3.3B active", q4:20.5, minRam:24, mmlu_pro:70.6, coding:51.6, composite:71, tok_s:55, hwPrice:1570, bestFor:"Best agentic coder", codingLabel:"SWE-bench 51.6%", sources:["https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct","https://artificialanalysis.ai/models/qwen3-coder-30b-a3b-instruct"] },
+      { id:"qwen2.5-coder-32b", name:"Qwen2.5-Coder 32B", params:"32B", q4:21.5, minRam:24, mmlu_pro:63.5, coding:92.7, composite:65, tok_s:21, hwPrice:1570, bestFor:"Dense coding champ", codingLabel:"HumanEval 92.7%", sources:["https://github.com/QwenLM/Qwen2.5-Coder/blob/main/qwencoder-eval/instruct/README.md","https://ollama.com/library/qwen2.5-coder"] },
+      { id:"deepseek-r1-32b", name:"DeepSeek-R1-Distill 32B", params:"32B", q4:21.5, minRam:24, mmlu_pro:73.9, coding:57.2, composite:78, tok_s:19, hwPrice:1570, bestFor:"Math/reasoning", codingLabel:"LiveCodeBench 57.2%", sources:["https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-32B","https://ollama.com/library/deepseek-r1"] },
+      { id:"llama-3.1-70b", name:"Llama 3.1 70B", params:"70B", q4:44.5, minRam:48, mmlu_pro:66.4, coding:80.5, composite:74, tok_s:11.2, hwPrice:1799, bestFor:"Max IQ at 48GB", sources:["https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/MODEL_CARD.md","https://craftrigs.com/benchmarks/apple-silicon-m-series-llm-benchmark-m1-m5/"] },
+    ];
+
+    const PICKS = {
+      8:  { model:"Llama 3.1 8B", why:"Only viable option. ~6.4GB Q4, ~82 tok/s. MMLU-Pro 48%.", upgrade:"M4 Pro 48GB unlocks 30B coders." },
+      16: { model:"Phi-4 14B or Mistral Small 24B", why:"Phi-4: MMLU-Pro 70.4% at 10.6GB. Mistral: best coding at 15.5GB.", upgrade:"$579 M4 16GB on Amazon when in stock." },
+      24: { model:"Qwen3-Coder 30B (MoE)", why:"SWE-bench 51.6%, only 20.5GB RAM, 55 tok/s on M4 Pro. Best agent model.", upgrade:"M4 Pro 24GB from $1570." },
+      48: { model:"Qwen3-Coder 30B daily + Llama 70B for hard tasks", why:"48GB runs 70B Q4 (~11 tok/s) or fast 30B MoE.", upgrade:"B&H M4 Pro 48GB $1799 (save $400)." },
+    };
+
+    let activeRam = "all";
+    let scatterChart, hardwareChart;
+
+    function hwPriceForRam(ram) {
+      const h = HARDWARE.find(x => x.ram >= ram);
+      return h ? h.price : 4000;
+    }
+
+    function getCoding(m) { return m.codingLabel ? parseFloat(m.coding) : m.coding; }
+
+    function getMetric(m, key) {
+      if (key === "coding") return m.coding;
+      if (key === "composite") return m.composite;
+      return m.mmlu_pro;
+    }
+
+    function filteredModels() {
+      if (activeRam === "all") return MODELS;
+      const r = parseInt(activeRam);
+      return MODELS.filter(m => m.minRam <= r);
+    }
+
+    function renderSummary() {
+      const el = document.getElementById("summary-cards");
+      const best48 = MODELS.find(m => m.id === "qwen3-coder-30b");
+      el.innerHTML = `
+        <div class="card"><h2>Your Mac today</h2><div class="stat">8 GB <small>/ 256 GB</small></div><p style="color:var(--warn);font-size:.85rem;margin:.5rem 0 0">M2 mini — max ~Llama 8B locally. API keys recommended.</p></div>
+        <div class="card"><h2>Best deal Jul 2026</h2><div class="stat">$1,799</div><p style="font-size:.85rem;color:var(--muted);margin:.4rem 0 0">M4 Pro 48GB @ B&H (−$400). Runs 30B coders + 70B slow.</p></div>
+        <div class="card"><h2>Best IQ / GB</h2><div class="stat">${best48?.mmlu_pro || 70.6}%</div><p style="font-size:.85rem;color:var(--muted);margin:.4rem 0 0">Qwen3-Coder 30B — 20.5 GB Q4, SWE-bench 51.6%</p></div>
+        <div class="card"><h2>Monthly (Apple)</h2><div class="stat">~$183</div><p style="font-size:.85rem;color:var(--muted);margin:.4rem 0 0">Apple Card 12-mo 0% on $2,199 MSRP</p></div>
+      `;
+    }
+
+    function renderPicks() {
+      const el = document.getElementById("picks");
+      el.innerHTML = Object.entries(PICKS).map(([ram, p]) => `
+        <div class="pick">
+          <strong>${ram} GB Mac</strong> → <span class="pill">${p.model}</span>
+          <div style="font-size:.85rem;color:var(--muted);margin-top:.25rem">${p.why}</div>
+          <div style="font-size:.8rem;margin-top:.2rem;color:var(--accent2)">${p.upgrade}</div>
+        </div>
+      `).join("");
+    }
+
+    function renderTable() {
+      const tbody = document.querySelector("#model-table tbody");
+      const metric = document.getElementById("metric-select").value;
+      tbody.innerHTML = filteredModels()
+        .sort((a,b) => getMetric(b, metric) - getMetric(a, metric))
+        .map(m => {
+          const hw = HARDWARE.find(h => h.ram >= m.minRam) || HARDWARE[0];
+          const yours = m.minRam <= 8 ? ' style="background:#1a1810"' : '';
+          const code = m.codingLabel || `HumanEval ${m.coding}%`;
+          return `<tr${yours}>
+            <td><strong>${m.name}</strong><br><span style="color:var(--muted)">${m.bestFor}</span></td>
+            <td>${m.q4} GB</td>
+            <td>${m.minRam} GB</td>
+            <td>${m.mmlu_pro}%</td>
+            <td>${code}</td>
+            <td>${m.tok_s ?? "—"}</td>
+            <td>$${hw.price}</td>
+            <td>${m.sources.map(s => `<a href="${s}" target="_blank" rel="noopener">↗</a>`).join(" ")}</td>
+          </tr>`;
+        }).join("");
+    }
+
+    function buildScatter() {
+      const metric = document.getElementById("metric-select").value;
+      const data = filteredModels().map(m => ({
+        x: m.q4,
+        y: getMetric(m, metric),
+        r: Math.max(4, (m.tok_s || 10) / 3),
+        label: m.name,
+        price: hwPriceForRam(m.minRam),
+      }));
+
+      const ctx = document.getElementById("scatter");
+      if (scatterChart) scatterChart.destroy();
+      scatterChart = new Chart(ctx, {
+        type: "bubble",
+        data: {
+          datasets: [{
+            label: "Models",
+            data,
+            backgroundColor: "rgba(61,214,198,0.55)",
+            borderColor: "#3dd6c6",
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (c) => {
+                  const m = filteredModels()[c.dataIndex];
+                  return [
+                    m.name,
+                    `RAM: ${m.q4} GB Q4`,
+                    `MMLU-Pro: ${m.mmlu_pro}%`,
+                    `Min Mac: ${m.minRam} GB (~$${hwPriceForRam(m.minRam)})`,
+                    `Speed: ${m.tok_s ?? "?"} tok/s`,
+                  ];
+                }
+              }
+            }
+          },
+          scales: {
+            x: { title: { display: true, text: "Q4 RAM footprint (GB)", color: "#8fa3b8" }, ticks: { color: "#8fa3b8" }, grid: { color: "#1e2a38" } },
+            y: { title: { display: true, text: metric === "coding" ? "Coding benchmark %" : "MMLU-Pro / composite %", color: "#8fa3b8" }, ticks: { color: "#8fa3b8" }, grid: { color: "#1e2a38" }, min: 40, max: 95 },
+          }
+        }
+      });
+    }
+
+    function buildHardware() {
+      const ctx = document.getElementById("hardware");
+      if (hardwareChart) hardwareChart.destroy();
+      hardwareChart = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: HARDWARE.map(h => `${h.ram}GB`),
+          datasets: [
+            { label: "Mac price ($)", data: HARDWARE.map(h => h.price), backgroundColor: "rgba(110,168,255,0.6)", yAxisID: "y" },
+            { label: "Max MMLU-Pro tier", data: HARDWARE.map(h => h.iq), type: "line", borderColor: "#3dd6c6", backgroundColor: "#3dd6c6", yAxisID: "y1", tension: 0.3 },
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            tooltip: {
+              callbacks: {
+                afterBody: (items) => {
+                  const i = items[0].dataIndex;
+                  const h = HARDWARE[i];
+                  return [`Best model: ${h.best}`, `Bandwidth: ${h.bw} GB/s`];
+                }
+              }
+            }
+          },
+          scales: {
+            x: { ticks: { color: "#8fa3b8" }, grid: { color: "#1e2a38" } },
+            y: { position: "left", title: { display: true, text: "Hardware $", color: "#8fa3b8" }, ticks: { color: "#8fa3b8" }, grid: { color: "#1e2a38" } },
+            y1: { position: "right", title: { display: true, text: "MMLU-Pro %", color: "#8fa3b8" }, ticks: { color: "#8fa3b8" }, grid: { drawOnChartArea: false }, min: 40, max: 90 },
+          }
+        }
+      });
+    }
+
+    document.querySelectorAll(".ram-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".ram-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        activeRam = btn.dataset.ram;
+        renderTable();
+        buildScatter();
+      });
+    });
+
+    document.getElementById("metric-select").addEventListener("change", () => {
+      renderTable();
+      buildScatter();
+    });
+
+    renderSummary();
+    renderPicks();
+    renderTable();
+    buildScatter();
+    buildHardware();
+  </script>
+</body>
+</html>
