@@ -45,7 +45,7 @@ with enough RAM for each. It is a snapshot: the numbers are typed into the page,
 </div>
 
 - **Intelligence vs RAM.** A bubble chart of benchmark score against Q4 footprint; bubble size is tokens per second on an M4 Pro. Hover a bubble for the model, RAM, score, minimum Mac and speed.
-- **Filters.** Buttons narrow everything to models that fit an 8, 16, 24 or 48 GB Mac; a dropdown switches the score between MMLU-Pro, coding and a composite index.
+- **Filters.** Buttons narrow everything to models that fit an 8, 16, 24 or 48 GB Mac; a dropdown switches the score between MMLU-Pro, HumanEval coding and a composite index.
 - **Hardware cost vs max intelligence.** Mac price per RAM tier (8 GB to 128 GB) as bars, with the best MMLU-Pro reachable at that tier as a line. Tooltips add the model and memory bandwidth.
 - **Top picks by RAM tier.** One recommendation each for 8, 16, 24 and 48 GB, with the reason and an upgrade note.
 - **Full comparison table.** Every model with Q4 RAM, minimum Mac, MMLU-Pro, coding score, tok/s, cheapest Mac price and links to its model card and Ollama page.
@@ -59,9 +59,11 @@ with enough RAM for each. It is a snapshot: the numbers are typed into the page,
 | Tokens per second | [SiliconScore M4 Pro](https://siliconscore.com/chips/m4-pro/) and community benchmarks |
 | Mac prices | [AppleInsider price guide](https://prices.appleinsider.com/mac-mini-m4) and retailer listings, July 2026 |
 
-The coding column mixes benchmarks: HumanEval for most models, SWE-bench for Qwen3-Coder 30B and
-LiveCodeBench for DeepSeek-R1-Distill 32B. The table labels each one, but the chart plots them
-on the same axis. Prices and deals are from July 2026 and will have moved.
+Coding scores come from different benchmarks: HumanEval for most models, SWE-bench for Qwen3-Coder 30B
+and LiveCodeBench for DeepSeek-R1-Distill 32B. The table names the benchmark next to each score, and
+the coding chart plots HumanEval only, listing the other two below it. "Best IQ / GB" is MMLU-Pro
+divided by Q4 footprint. Mac prices are the cheapest model with that much RAM. Prices and deals are
+from July 2026 and will have moved.
 
 ## Open it
 
